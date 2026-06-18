@@ -1,0 +1,10 @@
+# 실제 운영 설정 — 시크릿/봇키 포함. 절대 커밋 금지. (routes.example.json 만 공개)
+routes.json
+
+# 로그 + 에이전트 실행별 출력
+*.log
+runs/
+
+# 파이썬 캐시
+__pycache__/
+*.pyc

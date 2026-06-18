@@ -1,0 +1,45 @@
+{
+  "host": "127.0.0.1",
+  "port": 8644,
+
+  "//secret": "라우트가 자기 secret을 안 주면 쓰는 전역 fallback HMAC secret",
+  "secret": "CHANGE_ME_global_fallback_secret",
+
+  "//agent": "헤드리스 Claude Code 에이전트 실행 설정 (전역 기본값). 라우트에서 override 가능.",
+  "agent": {
+    "bin": "/home/ubuntu/.local/bin/claude",
+    "workdir": "/home/ubuntu",
+    "timeout": 1800,
+    "//model": "생략 시 기본 모델. 예: claude-opus-4-8",
+    "//extra_args": "기본 [\"--dangerously-skip-permissions\"]. 바꾸면 권한 동작도 바뀜.",
+    "//add_dir": "에이전트가 접근할 추가 디렉터리 목록",
+    "//tools": "허용 도구 목록 (생략 시 전체)"
+  },
+
+  "routes": {
+
+    "github-pr": {
+      "//": "GitHub PR 이벤트만 받아 에이전트로 처리. X-Hub-Signature-256 검증.",
+      "events": ["pull_request"],
+      "secret": "CHANGE_ME_github_webhook_secret",
+      "mode": "agent",
+      "prompt": "저장소 {repository.full_name} 의 PR #{number} \"{pull_request.title}\" 를 검토해라.\n작성자: {pull_request.user.login}\n링크: {pull_request.html_url}"
+    },
+
+    "task": {
+      "//": "임의 JSON 페이로드를 에이전트 작업으로. X-Webhook-Signature(범용 HMAC) 검증.",
+      "secret": "CHANGE_ME_task_secret",
+      "mode": "agent",
+      "agent": { "add_dir": ["/home/ubuntu/some-project"] },
+      "prompt": "{__raw__}\n\n위 페이로드 내용에 따라 작업을 수행해줘."
+    },
+
+    "ping": {
+      "//": "연결 확인용. 에이전트 안 돌리고 받은 프롬프트만 로그(드라이런). 테스트용 무인증.",
+      "secret": "INSECURE_NO_AUTH",
+      "mode": "log",
+      "prompt": "🔔 webhook 수신: {message}"
+    }
+
+  }
+}
