@@ -15,7 +15,7 @@ use std::{env, fs, io, path::PathBuf, process::Command};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Cell, List, ListItem, ListState, Paragraph, Row, Table},
 };
 use serde_json::{Map, Value};
 
@@ -151,14 +151,14 @@ struct Field {
 
 fn route_fields() -> Vec<Field> {
     vec![
-        Field { label: "엔드포인트 이름  (POST /webhooks/<이름>)", key: "__name__", kind: Kind::Name },
+        Field { label: "엔드포인트 이름", key: "__name__", kind: Kind::Name },
         Field { label: "실행 모드", key: "mode", kind: Kind::Mode },
         Field { label: "시크릿 (HMAC)", key: "secret", kind: Kind::Secret },
-        Field { label: "이벤트 필터 (콤마, 선택)", key: "events", kind: Kind::Csv },
-        Field { label: "프롬프트 — 어떤 작업을 할지", key: "prompt", kind: Kind::Prompt },
-        Field { label: "agent.model (선택)", key: "model", kind: Kind::AgentText },
-        Field { label: "agent.add_dir (콤마, 선택)", key: "add_dir", kind: Kind::AgentCsv },
-        Field { label: "agent.timeout 초 (선택)", key: "timeout", kind: Kind::AgentText },
+        Field { label: "이벤트 필터", key: "events", kind: Kind::Csv },
+        Field { label: "프롬프트 (작업 내용)", key: "prompt", kind: Kind::Prompt },
+        Field { label: "agent.model", key: "model", kind: Kind::AgentText },
+        Field { label: "agent.add_dir", key: "add_dir", kind: Kind::AgentCsv },
+        Field { label: "agent.timeout(초)", key: "timeout", kind: Kind::AgentText },
     ]
 }
 
@@ -543,6 +543,15 @@ fn draw_list(f: &mut Frame, app: &mut App) {
     f.render_widget(Paragraph::new(help), chunks[2]);
 }
 
+/// Char-aware truncation with an ellipsis (keeps Korean/multibyte intact).
+fn clip(s: &str, max: usize) -> String {
+    if s.chars().count() > max {
+        s.chars().take(max).collect::<String>() + "…"
+    } else {
+        s.to_string()
+    }
+}
+
 fn draw_form(f: &mut Frame, app: &mut App) {
     let area = f.area();
     let chunks = Layout::vertical([
@@ -560,38 +569,38 @@ fn draw_form(f: &mut Frame, app: &mut App) {
         ),
     };
     f.render_widget(
-        Paragraph::new(title).style(Style::new().bold()).block(Block::default().borders(Borders::BOTTOM)),
+        Paragraph::new(title).style(Style::new().bold().fg(Color::Yellow)),
         chunks[0],
     );
 
-    let rows: Vec<Line> = app
+    let rows: Vec<Row> = app
         .fields
         .iter()
         .enumerate()
         .map(|(i, fld)| {
             let selected = i == app.field_idx;
-            let marker = if selected { "▶ " } else { "  " };
-            let label_style = if selected {
-                Style::new().reversed().bold()
-            } else {
-                Style::new().bold()
-            };
             let value = if fld.kind == Kind::Mode {
                 let cur = app.form_route.get("mode").and_then(|v| v.as_str()).unwrap_or("agent");
-                let a = if cur == "agent" { "[agent]" } else { " agent " };
-                let l = if cur == "log" { "[log]" } else { " log " };
-                format!("{a}  {l}")
+                let a = if cur == "agent" { "[ agent ]" } else { "  agent  " };
+                let l = if cur == "log" { "[ log ]" } else { "  log  " };
+                format!("{a} {l}")
             } else {
-                app.field_display(fld)
+                clip(&app.field_display(fld), 200)
             };
-            Line::from(vec![
-                Span::styled(format!("{marker}{:<34}", fld.label), label_style),
-                Span::raw("  "),
-                Span::styled(value, Style::new().fg(Color::Cyan)),
-            ])
+            let marker = if selected { "▶ " } else { "  " };
+            let val_cell = if selected {
+                Cell::from(value)
+            } else {
+                Cell::from(value).style(Style::new().fg(Color::Cyan))
+            };
+            let row = Row::new(vec![Cell::from(format!("{marker}{}", fld.label)), val_cell]);
+            if selected { row.style(Style::new().reversed().bold()) } else { row }
         })
         .collect();
-    f.render_widget(Paragraph::new(rows).wrap(Wrap { trim: false }), chunks[1]);
+    let table = Table::new(rows, [Constraint::Length(30), Constraint::Min(10)])
+        .column_spacing(2)
+        .block(Block::default().borders(Borders::ALL));
+    f.render_widget(table, chunks[1]);
 
     // bottom: input line OR help
     let bottom = if let Some(buf) = &app.editing {
@@ -606,6 +615,7 @@ fn draw_form(f: &mut Frame, app: &mut App) {
         Paragraph::new(Line::from(Span::styled(app.status.clone(), Style::new().bold())))
     } else {
         let hint = match app.fields[app.field_idx].kind {
+            Kind::Name => "POST /webhooks/<이름> 로 호출됨 · ⏎ 편집 · ^S 저장 · Esc 취소",
             Kind::Mode => "←/→/Space 모드 토글  (agent=에이전트 실행 / log=드라이런)",
             Kind::Prompt => "⏎ $EDITOR 로 프롬프트 작성 · ^S 저장 · Esc 취소",
             Kind::Secret => "⏎ 편집 · ^G 시크릿 생성 · ^S 저장 · Esc 취소",
