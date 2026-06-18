@@ -22,6 +22,21 @@ python3 agenthook.py routes.json
 curl http://127.0.0.1:8644/health   # {"status":"ok",...}
 ```
 
+## 설정 TUI
+
+`routes.json` 을 손으로 고치는 대신, 동봉된 curses TUI 로 엔드포인트를 추가하고
+프롬프트(어떤 작업을 시킬지)를 작성할 수 있다. 역시 stdlib만 사용.
+
+```bash
+python3 agenthook_tui.py [routes.json]
+```
+
+- **라우트 목록**: `↑/↓` 이동 · `a` 추가 · `e`/`⏎` 편집 · `d` 삭제 · `g` 전역설정 · `w` 저장 · `q` 종료
+- **라우트 폼**: `↑/↓` 필드 이동 · `⏎` 편집 · `←/→` 모드 토글 · `^G` 시크릿 생성 · `^S` 저장 · `Esc` 취소
+- 프롬프트 필드는 `$EDITOR`(nano/vi)를 열어 멀티라인으로 편집한다.
+- 저장 시 `routes.json` 을 `chmod 600` 으로 기록한다. 변경 후에는
+  `systemctl --user restart agenthook` 로 반영(설정은 기동 시 로드).
+
 > `routes.json` 은 시크릿을 담으므로 `.gitignore` 로 커밋에서 제외된다.
 > 공개되는 건 `routes.example.json`(전부 `CHANGE_ME` 플레이스홀더) 뿐이다.
 
