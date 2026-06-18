@@ -1,0 +1,19 @@
+[package]
+name = "agenthook-tui"
+version = "0.1.0"
+edition = "2021"
+description = "ratatui-based config editor for agenthook routes.json"
+
+[[bin]]
+name = "agenthook-tui"
+path = "src/main.rs"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
