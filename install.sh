@@ -69,11 +69,12 @@ if ! command -v cargo >/dev/null; then
   echo "   설치됨: $(cargo --version)"
 fi
 
-echo ">> [1/4] TUI 빌드 (ratatui)"
+echo ">> [1/4] TUI 빌드 (ratatui) + 관리 CLI"
 cargo build --release --manifest-path "$SRC/tui/Cargo.toml"
 mkdir -p "$BIN_DIR"
 install -m 0755 "$SRC/tui/target/release/agenthook-tui" "$BIN_DIR/agenthook-tui"
-echo "   설치됨: $BIN_DIR/agenthook-tui"
+install -m 0755 "$SRC/agenthookctl" "$BIN_DIR/agenthookctl"
+echo "   설치됨: $BIN_DIR/agenthook-tui, $BIN_DIR/agenthookctl"
 
 echo ">> [2/4] 설정 파일"
 if [ -f "$CONFIG" ]; then
@@ -119,9 +120,9 @@ if [ "${SKIP_SERVICE:-0}" != "1" ]; then
   echo
   echo "  webhook:  http://127.0.0.1:$PORT/webhooks/<route>   (헬스: /health)"
 fi
-echo "  설정 TUI: agenthook-tui $CONFIG"
+echo "  관리:     agenthookctl status | restart | logs -f | config | update"
+echo "  설정 TUI: agenthookctl config        (또는 agenthook-tui $CONFIG)"
 case ":$PATH:" in
   *":$BIN_DIR:"*) : ;;
   *) echo "  ⚠ $BIN_DIR 가 PATH에 없습니다. 추가하거나 풀경로로 실행하세요." ;;
 esac
-echo "  설정 변경 후:  systemctl --user restart $SERVICE"

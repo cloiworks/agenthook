@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/cloiworks/agenthook/main/install.sh
 `install.sh` 가 알아서 다 한다:
 
 0. (원라이너인 경우) 레포를 `~/agenthook` 에 clone (이미 있으면 fast-forward)
-1. ratatui TUI 빌드 → `~/.local/bin/agenthook-tui` 설치
+1. ratatui TUI + 관리 CLI 설치 → `~/.local/bin/{agenthook-tui,agenthookctl}`
 2. `routes.json` 준비 (없으면 example 복사 + `chmod 600`, **있으면 보존**)
 3. systemd user 서비스(`agenthook.service`) 설치 → `daemon-reload` → `restart`
 
@@ -38,12 +38,20 @@ curl -fsSL https://raw.githubusercontent.com/cloiworks/agenthook/main/install.sh
 | `SKIP_SERVICE=1` | TUI만 설치, systemd 서비스 건너뜀 | (off) |
 | `NO_RUSTUP=1` | cargo 없을 때 자동 설치 안 함(에러 종료) | (off) |
 
-설치 후:
+## 관리 (agenthookctl)
+
+설치되면 `agenthookctl` 한 명령으로 다 다룬다:
 
 ```bash
-curl http://127.0.0.1:8644/health    # {"status":"ok",...}
-agenthook-tui ~/agenthook/routes.json # 설정 편집
+agenthookctl status        # 서비스 상태 + 헬스
+agenthookctl config        # 라우트 설정 TUI 열기
+agenthookctl restart       # 설정 바꾼 뒤 반영
+agenthookctl logs -f       # 실시간 로그
+agenthookctl routes        # 등록된 엔드포인트 목록
+agenthookctl update        # git pull + 재빌드 + 재시작
 ```
+
+`start`·`stop`·`enable`·`disable`·`health`·`version` 도 있다. (`AGENTHOOK_DIR` 로 설치 위치 지정 가능.)
 
 ## 설정 TUI (ratatui)
 

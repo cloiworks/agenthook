@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#
+# agenthookctl — manage the agenthook webhook gateway + edit its config.
+#
+#   agenthookctl <command>
+#
+# Resolves the install dir from $AGENTHOOK_DIR (default ~/agenthook).
+set -euo pipefail
+
+AGENTHOOK_DIR="${AGENTHOOK_DIR:-$HOME/agenthook}"
+SERVICE="agenthook"
+CONFIG="$AGENTHOOK_DIR/routes.json"
+LOG="$AGENTHOOK_DIR/agenthook.log"
+UNIT="$HOME/.config/systemd/user/$SERVICE.service"
+
+uc() { systemctl --user "$@"; }
+
+port() {
+  python3 -c "import json;print(json.load(open('$CONFIG')).get('port',8644))" 2>/dev/null || echo 8644
+}
+
+health() {
+  local p; p="$(port)"
+  curl -fsS "http://127.0.0.1:$p/health" 2>/dev/null \
+    && echo \
+    || { echo "down (http://127.0.0.1:$p)"; return 1; }
+}
+
+need_tui() {
+  command -v agenthook-tui >/dev/null \
+    || { echo "!! agenthook-tui 가 PATH에 없습니다. install.sh 를 먼저 실행하세요."; exit 1; }
+}
+
+usage() {
+  cat <<EOF
+agenthookctl — agenthook 관리
+
+사용법: agenthookctl <명령>
+
+  status              서비스 상태 + 헬스체크
+  health              /health 호출
+  start | stop        서비스 시작/정지
+  restart             서비스 재시작 (설정 변경 후)
+  enable | disable    부팅 시 자동기동 on/off
+  logs [-f]           서비스 로그 (–f 면 실시간)
+  config | edit       라우트 설정 TUI 열기 (agenthook-tui)
+  routes              등록된 엔드포인트 목록
+  update              git pull + 재빌드 + 재시작 (install.sh)
+  version             버전
+  help                이 도움말
+
+환경: AGENTHOOK_DIR=$AGENTHOOK_DIR
+EOF
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  status)
+    uc --no-pager status "$SERVICE" 2>/dev/null | sed -n '1,4p' || true
+    echo -n "health: "; health || true
+    ;;
+  health)   health ;;
+  start)    uc start "$SERVICE";   echo "started" ;;
+  stop)     uc stop "$SERVICE";    echo "stopped" ;;
+  restart)  uc restart "$SERVICE"; echo "restarted"; sleep 1; echo -n "health: "; health || true ;;
+  enable)   uc enable "$SERVICE";  echo "enabled (부팅 시 자동기동)" ;;
+  disable)  uc disable "$SERVICE"; echo "disabled" ;;
+  logs)
+    if [ "${1:-}" = "-f" ]; then tail -f "$LOG"; else tail -n 40 "$LOG" 2>/dev/null || echo "(로그 없음: $LOG)"; fi
+    ;;
+  config|edit)
+    need_tui; exec agenthook-tui "$CONFIG"
+    ;;
+  routes)
+    python3 -c "import json;[print(' -',k) for k in json.load(open('$CONFIG'))['routes']]" 2>/dev/null \
+      || echo "(설정을 읽을 수 없음: $CONFIG)"
+    ;;
+  update)
+    [ -d "$AGENTHOOK_DIR/.git" ] || { echo "!! $AGENTHOOK_DIR 가 git 저장소가 아닙니다."; exit 1; }
+    git -C "$AGENTHOOK_DIR" pull --ff-only
+    exec "$AGENTHOOK_DIR/install.sh"
+    ;;
+  version)
+    (agenthook-tui --version 2>/dev/null) || true
+    git -C "$AGENTHOOK_DIR" rev-parse --short HEAD 2>/dev/null | sed 's/^/agenthook /' || echo "agenthook (unknown)"
+    ;;
+  help|-h|--help) usage ;;
+  *) echo "알 수 없는 명령: $cmd"; echo; usage; exit 1 ;;
+esac
