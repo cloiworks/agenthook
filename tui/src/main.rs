@@ -15,7 +15,7 @@ use std::{env, fs, io, path::PathBuf, process::Command};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Cell, List, ListItem, ListState, Paragraph, Row, Table},
+    widgets::{Block, Borders, Cell, Clear, List, ListItem, ListState, Paragraph, Row, Table},
 };
 use serde_json::{Map, Value};
 
@@ -602,16 +602,8 @@ fn draw_form(f: &mut Frame, app: &mut App) {
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(table, chunks[1]);
 
-    // bottom: input line OR help
-    let bottom = if let Some(buf) = &app.editing {
-        let label = app.fields[app.field_idx].label;
-        Paragraph::new(Line::from(vec![
-            Span::styled(format!("{label}: "), Style::new().bold()),
-            Span::raw(buf.clone()),
-            Span::styled("█", Style::new().slow_blink()),
-        ]))
-        .style(Style::new().bg(Color::Rgb(40, 40, 60)))
-    } else if !app.status.is_empty() {
+    // bottom: status or contextual help
+    let bottom = if !app.status.is_empty() {
         Paragraph::new(Line::from(Span::styled(app.status.clone(), Style::new().bold())))
     } else {
         let hint = match app.fields[app.field_idx].kind {
@@ -624,6 +616,30 @@ fn draw_form(f: &mut Frame, app: &mut App) {
         Paragraph::new(Line::from(Span::styled(hint, Style::new().dim())))
     };
     f.render_widget(bottom, chunks[2]);
+
+    // editing input rendered as a centered popup so it's unmissable
+    if let Some(buf) = &app.editing {
+        let label = app.fields[app.field_idx].label;
+        let w = area.width.saturating_sub(8).min(84).max(24);
+        let x = area.x + area.width.saturating_sub(w) / 2;
+        let y = area.y + area.height / 2;
+        let popup = Rect { x, y: y.saturating_sub(1), width: w, height: 3 };
+        f.render_widget(Clear, popup);
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::raw(clip(buf, 200)),
+                Span::styled("█", Style::new().rapid_blink()),
+            ]))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::new().fg(Color::Yellow))
+                    .title(format!(" 편집: {label}  (⏎ 확정 · Esc 취소) ")),
+            )
+            .style(Style::new().fg(Color::White).bg(Color::Rgb(25, 25, 45))),
+            popup,
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -640,7 +656,7 @@ fn on_key(app: &mut App, key: KeyEvent) -> Action {
     // line-input mode captures everything first
     if app.editing.is_some() {
         match key.code {
-            KeyCode::Enter => {
+            KeyCode::Enter | KeyCode::Char('\n') | KeyCode::Char('\r') => {
                 let b = app.editing.take().unwrap();
                 app.apply_input(b);
             }
@@ -698,7 +714,8 @@ fn on_key_list(app: &mut App, key: KeyEvent) -> Action {
                 app.confirm_delete = true;
             }
         }
-        KeyCode::Char('e') | KeyCode::Char('E') | KeyCode::Enter => {
+        KeyCode::Char('e') | KeyCode::Char('E') | KeyCode::Enter
+        | KeyCode::Char('\n') | KeyCode::Char('\r') => {
             if let Some(nm) = app.selected_name() {
                 app.open_route_form(&nm);
             }
@@ -759,7 +776,7 @@ fn on_key_route(app: &mut App, key: KeyEvent) -> Action {
         KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') if kind == Kind::Mode => {
             app.toggle_mode();
         }
-        KeyCode::Enter => match kind {
+        KeyCode::Enter | KeyCode::Char('\n') | KeyCode::Char('\r') => match kind {
             Kind::Mode => app.toggle_mode(),
             Kind::Prompt => return Action::EditPrompt,
             _ => app.editing = Some(app.current_field_initial()),
@@ -785,7 +802,7 @@ fn on_key_global(app: &mut App, key: KeyEvent) -> Action {
     if form_nav(app, key) {
         return Action::None;
     }
-    if let KeyCode::Enter = key.code {
+    if matches!(key.code, KeyCode::Enter | KeyCode::Char('\n') | KeyCode::Char('\r')) {
         app.editing = Some(app.current_field_initial());
         app.dirty = true;
     }
