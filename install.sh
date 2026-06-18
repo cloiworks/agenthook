@@ -54,7 +54,20 @@ fi
 CONFIG="$SRC/routes.json"
 
 command -v python3 >/dev/null || { echo "!! python3 가 필요합니다."; exit 1; }
-command -v cargo   >/dev/null || { echo "!! cargo(Rust) 가 필요합니다: https://rustup.rs"; exit 1; }
+
+if ! command -v cargo >/dev/null; then
+  if [ "${NO_RUSTUP:-0}" = "1" ]; then
+    echo "!! cargo(Rust) 가 없습니다. https://rustup.rs 로 설치 후 다시 실행하세요."
+    exit 1
+  fi
+  command -v curl >/dev/null || { echo "!! Rust 자동 설치에 curl 이 필요합니다."; exit 1; }
+  echo ">> cargo 없음 → rustup(minimal) 자동 설치 (건너뛰려면 NO_RUSTUP=1)"
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+  # shellcheck disable=SC1091
+  source "$HOME/.cargo/env" 2>/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
+  command -v cargo >/dev/null || { echo "!! rustup 설치 후에도 cargo 를 찾지 못했습니다."; exit 1; }
+  echo "   설치됨: $(cargo --version)"
+fi
 
 echo ">> [1/4] TUI 빌드 (ratatui)"
 cargo build --release --manifest-path "$SRC/tui/Cargo.toml"

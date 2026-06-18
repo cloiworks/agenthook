@@ -28,13 +28,15 @@ curl -fsSL https://raw.githubusercontent.com/cloiworks/agenthook/main/install.sh
 2. `routes.json` 준비 (없으면 example 복사 + `chmod 600`, **있으면 보존**)
 3. systemd user 서비스(`agenthook.service`) 설치 → `daemon-reload` → `restart`
 
-전제: `git` · `python3` · `cargo`(Rust). 환경변수 오버라이드:
+전제: `git` · `python3`. `cargo`(Rust)가 없으면 **rustup(minimal)을 자동 설치**한다
+(자동 설치를 막으려면 `NO_RUSTUP=1`). 환경변수 오버라이드:
 
 | 변수 | 의미 | 기본 |
 |---|---|---|
 | `AGENTHOOK_DIR` | clone/소스 위치(서비스 실행 경로) | `~/agenthook` |
 | `BIN_DIR` | TUI 바이너리 설치 위치 | `~/.local/bin` |
 | `SKIP_SERVICE=1` | TUI만 설치, systemd 서비스 건너뜀 | (off) |
+| `NO_RUSTUP=1` | cargo 없을 때 자동 설치 안 함(에러 종료) | (off) |
 
 설치 후:
 
