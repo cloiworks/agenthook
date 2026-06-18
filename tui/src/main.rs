@@ -10,12 +10,12 @@
 //! Form keys:  ↑/↓ field · ⏎ edit · ←/→ toggle mode · ^G gen secret · ^S save · Esc cancel
 //! The prompt field opens $EDITOR (nano/vi) for multi-line editing.
 
-use std::{env, fs, io, path::PathBuf, process::Command};
+use std::{env, fs, io};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Cell, Clear, List, ListItem, ListState, Paragraph, Row, Table},
+    widgets::{Block, Borders, Cell, Clear, List, ListItem, ListState, Paragraph, Row, Table, Wrap},
 };
 use serde_json::{Map, Value};
 
@@ -416,7 +416,13 @@ impl App {
                 };
                 target.as_object_mut().unwrap().insert(f_key, v);
             }
-            Kind::Mode | Kind::Prompt => {}
+            Kind::Prompt => {
+                self.form_route
+                    .as_object_mut()
+                    .unwrap()
+                    .insert("prompt".into(), Value::String(buf));
+            }
+            Kind::Mode => {}
         }
     }
 
@@ -441,30 +447,6 @@ impl App {
             .unwrap()
             .insert("secret".into(), Value::String(gen_secret()));
     }
-}
-
-// ---------------------------------------------------------------------------
-// $EDITOR for the prompt field
-// ---------------------------------------------------------------------------
-
-fn first_editor() -> String {
-    for c in ["nano", "vim", "vi"] {
-        if Command::new("which").arg(c).output().map(|o| o.status.success()).unwrap_or(false) {
-            return c.to_string();
-        }
-    }
-    "vi".to_string()
-}
-
-fn edit_in_editor(initial: &str) -> String {
-    let editor = env::var("EDITOR").unwrap_or_else(|_| first_editor());
-    let mut path = PathBuf::from(env::temp_dir());
-    path.push(format!("agenthook_prompt_{}.txt", std::process::id()));
-    let _ = fs::write(&path, initial);
-    let _ = Command::new(editor).arg(&path).status();
-    let out = fs::read_to_string(&path).unwrap_or_default();
-    let _ = fs::remove_file(&path);
-    out.trim_end_matches('\n').to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -620,23 +602,29 @@ fn draw_form(f: &mut Frame, app: &mut App) {
     // editing input rendered as a centered popup so it's unmissable
     if let Some(buf) = &app.editing {
         let label = app.fields[app.field_idx].label;
-        let w = area.width.saturating_sub(8).min(84).max(24);
+        let multiline = app.fields[app.field_idx].kind == Kind::Prompt;
+        let (w, h, title, shown) = if multiline {
+            let w = ((area.width as u32 * 8 / 10) as u16).clamp(40, 100);
+            let h = area.height.saturating_sub(4).clamp(6, 18);
+            (w, h, format!(" {label}  (⏎ 줄바꿈 · ^S 저장 · Esc 취소) "), format!("{buf}█"))
+        } else {
+            let w = area.width.saturating_sub(8).min(84).max(24);
+            (w, 3u16, format!(" 편집: {label}  (⏎ 확정 · Esc 취소) "), format!("{}█", clip(buf, 400)))
+        };
         let x = area.x + area.width.saturating_sub(w) / 2;
-        let y = area.y + area.height / 2;
-        let popup = Rect { x, y: y.saturating_sub(1), width: w, height: 3 };
+        let y = area.y + area.height.saturating_sub(h) / 2;
+        let popup = Rect { x, y, width: w, height: h };
         f.render_widget(Clear, popup);
         f.render_widget(
-            Paragraph::new(Line::from(vec![
-                Span::raw(clip(buf, 200)),
-                Span::styled("█", Style::new().rapid_blink()),
-            ]))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::new().fg(Color::Yellow))
-                    .title(format!(" 편집: {label}  (⏎ 확정 · Esc 취소) ")),
-            )
-            .style(Style::new().fg(Color::White).bg(Color::Rgb(25, 25, 45))),
+            Paragraph::new(shown)
+                .wrap(Wrap { trim: false })
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::new().fg(Color::Yellow))
+                        .title(title),
+                )
+                .style(Style::new().fg(Color::White).bg(Color::Rgb(25, 25, 45))),
             popup,
         );
     }
@@ -649,18 +637,32 @@ fn draw_form(f: &mut Frame, app: &mut App) {
 enum Action {
     None,
     Quit,
-    EditPrompt, // suspend TUI -> $EDITOR
 }
 
 fn on_key(app: &mut App, key: KeyEvent) -> Action {
     // line-input mode captures everything first
     if app.editing.is_some() {
+        let multiline = app
+            .fields
+            .get(app.field_idx)
+            .map(|f| f.kind == Kind::Prompt)
+            .unwrap_or(false);
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
-            KeyCode::Enter | KeyCode::Char('\n') | KeyCode::Char('\r') => {
+            KeyCode::Esc => app.editing = None,
+            // ^S confirms (the only way to finish a multiline prompt)
+            KeyCode::Char('s') if ctrl => {
                 let b = app.editing.take().unwrap();
                 app.apply_input(b);
             }
-            KeyCode::Esc => app.editing = None,
+            KeyCode::Enter | KeyCode::Char('\n') | KeyCode::Char('\r') => {
+                if multiline {
+                    app.editing.as_mut().unwrap().push('\n');
+                } else {
+                    let b = app.editing.take().unwrap();
+                    app.apply_input(b);
+                }
+            }
             KeyCode::Backspace => {
                 app.editing.as_mut().unwrap().pop();
             }
@@ -778,7 +780,6 @@ fn on_key_route(app: &mut App, key: KeyEvent) -> Action {
         }
         KeyCode::Enter | KeyCode::Char('\n') | KeyCode::Char('\r') => match kind {
             Kind::Mode => app.toggle_mode(),
-            Kind::Prompt => return Action::EditPrompt,
             _ => app.editing = Some(app.current_field_initial()),
         },
         _ => {}
@@ -835,17 +836,6 @@ fn run(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> io::Result<()>
 
         match on_key(app, key) {
             Action::Quit => return Ok(()),
-            Action::EditPrompt => {
-                let initial = val_to_string(app.form_route.get("prompt"));
-                ratatui::restore();
-                let edited = edit_in_editor(&initial);
-                *terminal = ratatui::init();
-                terminal.clear()?;
-                app.form_route
-                    .as_object_mut()
-                    .unwrap()
-                    .insert("prompt".into(), Value::String(edited));
-            }
             Action::None => {}
         }
     }
