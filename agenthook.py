@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-cokac_webhook.py — a Hermes-style inbound webhook gateway for cokacdir.
+agenthook.py — a Hermes-style inbound webhook gateway that runs headless agents.
 
 Mirrors NousResearch hermes-agent's webhook adapter
-(website/docs/user-guide/messaging/webhooks.md), adapted to cokacdir's
-trigger model. Stdlib only — no pip installs.
+(website/docs/user-guide/messaging/webhooks.md). A webhook simply triggers a
+headless Claude Code agent run. Stdlib only — no pip installs.
 
 Design parity with Hermes:
   * POST /webhooks/<route>           (JSON only, 1 MB body cap)
@@ -51,7 +51,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 # --------------------------------------------------------------------------
 
 DEFAULT_CONFIG_PATH = os.environ.get(
-    "COKAC_WEBHOOK_CONFIG",
+    "AGENTHOOK_CONFIG",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "routes.json"),
 )
 
@@ -181,7 +181,7 @@ def extract_event(headers, payload: dict):
 
 
 # --------------------------------------------------------------------------
-# Dispatch backends -> cokacdir
+# Dispatch -> headless agent run
 # --------------------------------------------------------------------------
 
 def _agent_cmd(route: dict, cfg: dict, prompt: str) -> list[str]:
@@ -296,7 +296,7 @@ def _rate_ok(route_name: str, limit: int) -> bool:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "cokac-webhook/1.0"
+    server_version = "agenthook/1.0"
 
     # silence default noisy logging; we log ourselves
     def log_message(self, *a):
@@ -312,7 +312,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.rstrip("/") == "/health":
-            return self._json(200, {"status": "ok", "platform": "cokac-webhook"})
+            return self._json(200, {"status": "ok", "platform": "agenthook"})
         return self._json(404, {"status": "error", "message": "not found"})
 
     def do_POST(self):
@@ -387,7 +387,7 @@ def main():
 
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd.cfg = cfg                               # type: ignore[attr-defined]
-    log(f"cokac-webhook listening on http://{host}:{port}  "
+    log(f"agenthook listening on http://{host}:{port}  "
         f"routes={list(cfg['routes'])}")
     try:
         httpd.serve_forever()

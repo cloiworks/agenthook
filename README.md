@@ -1,4 +1,4 @@
-# cokac-webhook
+# agenthook
 
 Hermes 스타일 인바운드 webhook 게이트웨이. 외부 시스템이 `POST /webhooks/<route>` 로
 JSON을 밀어넣으면, 즉시 `202 accepted`(단방향 ack)만 돌려주고 백그라운드에서
@@ -17,7 +17,7 @@ stdlib만 사용 — `pip install` 불필요. 실행에는 `claude` CLI(Claude C
 cp routes.example.json routes.json
 chmod 600 routes.json          # 시크릿 보호
 # 2) 실행
-python3 cokac_webhook.py routes.json
+python3 agenthook.py routes.json
 # 헬스체크
 curl http://127.0.0.1:8644/health   # {"status":"ok",...}
 ```
@@ -83,38 +83,38 @@ printf '%s' "$BODY" | openssl dgst -sha256 -hmac 'YOUR_SECRET' | sed 's/^.*= //'
 
 ## systemd (상시 실행)
 
-`~/.config/systemd/user/cokac-webhook.service`:
+`~/.config/systemd/user/agenthook.service`:
 ```ini
 [Unit]
-Description=cokac-webhook gateway
+Description=agenthook gateway
 After=network.target
 
 [Service]
-WorkingDirectory=%h/cokac-webhook
-ExecStart=/usr/bin/python3 %h/cokac-webhook/cokac_webhook.py routes.json
+WorkingDirectory=%h/agenthook
+ExecStart=/usr/bin/python3 %h/agenthook/agenthook.py routes.json
 Restart=always
 
 [Install]
 WantedBy=default.target
 ```
 ```bash
-systemctl --user daemon-reload && systemctl --user enable --now cokac-webhook
+systemctl --user daemon-reload && systemctl --user enable --now agenthook
 ```
 
 ## 외부 노출 (traefik — hermes-webhooks 패턴 그대로)
 
-`gitops/traefik/dynamic/cokac-webhook.yml`:
+`gitops/traefik/dynamic/agenthook.yml`:
 ```yaml
 http:
   routers:
-    cokac-webhooks:
+    agenthook:
       rule: "Host(`hooks.your-domain.com`) && PathPrefix(`/webhooks`)"
       entryPoints: [https]
       tls: { certResolver: letsencrypt }
-      service: cokac-webhooks
+      service: agenthook
       priority: 100
   services:
-    cokac-webhooks:
+    agenthook:
       loadBalancer:
         servers:
           - url: "http://127.0.0.1:8644"
